@@ -47,3 +47,5 @@ Multiple files can be uploaded at the same time.
 If you have in-line images you'll need to upload them manually. Haven't tried
 it yet.
 
+You might want to write a shell script wrapper to help with configuration and
+pushing multiple files to multiple spaces.
