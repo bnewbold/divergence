@@ -1,9 +1,9 @@
 
-A simple python script for uploading markdown files to Confluence (a
-proprietary wiki system). If you find yourself needing to publish documentation
-to Confluence at work, but wish that instead you could just write markdown and
-keep it versioned in git instead of contending with browser-mangling javascript
-and pull-down menus, then this tool is for you!
+`divergence` is a simple python script for uploading markdown files to
+Confluence (a proprietary wiki system). If you find yourself needing to publish
+documentation to Confluence at work, but wish that instead you could just write
+markdown and keep it versioned in git instead of contending with
+browser-mangling javascript and pull-down menus, then this tool is for you!
 
 This is crude and one-way: there is no mechanism for synchronizing or retaining
 edits made by peers, won't look the way you want it to, there are no unittests,

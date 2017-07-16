@@ -4,9 +4,9 @@ TODO:
 - have space default to user home
 - update checking doesn't actually work
 - fuzzy page title matching bug
-- optional header
-- optional table of contents
-- force update flag
+- optional header (flag)
+- optional table of contents (flag)
+- "force update" (flag)
 
 Nice to have, but unlikely to be implemented:
 - more than just markdown (restructured text, html, etc)
