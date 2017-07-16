@@ -1,23 +1,14 @@
 
-program structure:
-- check for pandoc existence
-- render each file to pandoc format (checking for typos, etc)
-- connect to server
-- for each doc:
-    parse for metadata
-    read page to see if it exists
-    if no change, pass
-    else, upload
-
 TODO:
-- `--help`
-- installation procedure
-- extract space, title, and/or page ID from pandoc yaml header
-- don't push if no change
+- extract title, and/or page ID from pandoc yaml header. maybe even space?
+- have space default to user home
+- update checking doesn't actually work
+- fuzzy page title matching bug
+- optional header
+- optional table of contents
+- force update flag
 
 Nice to have, but unlikely to be implemented:
-
-- optional table of contents
 - more than just markdown (restructured text, html, etc)
 - configurable banner at the top of rendered pages ("this uploaded from...")
 - color output, one line per file

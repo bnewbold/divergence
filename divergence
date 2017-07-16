@@ -23,17 +23,26 @@ class DivergenceProgram:
         self.api.headers.update({'Content-Type': 'application/json'})
         self.base_url = url
         self.space = space
-
-        # TODO: find lua path?
+        self.pandoc_helper_path = None
+        for p in ('./pandoc_confluence.lua',
+                  '/usr/local/lib/divergence/pandoc_confluence.lua',
+                  '/usr/lib/divergence/pandoc_confluence.lua'):
+            if os.path.exists(p):
+                self.pandoc_helper_path = p
+                break
+        if self.pandoc_helper_path is None:
+            log.error("Could not find pandoc helper (pandoc_confluence.lua), bailing")
+            sys.exit(-1)
 
     def get_page(self, title):
         """
         Returns None if not found, otherwise a dict with id, space, and body (in storage format)
         """
+        # TODO: could remove the body_view stuff here
         resp = self.api.get(self.base_url + "/rest/api/content",
             params={"spaceKey": self.space,
                     "title": title,
-                    "expand": "body.storage,version,space",
+                    "expand": "body.storage,body.view,version,space",
                     "type": "page"})
 
         log.debug(resp)
@@ -49,7 +58,8 @@ class DivergenceProgram:
         return {"id": int(page['id']),
                 "version": int(page['version']['number']),
                 "space": page['space']['key'],
-                "body": page['body']['storage']['value']}
+                "body": page['body']['storage']['value'],
+                "body_view": page['body']['view']['value']}
 
     def create_page(self, title, body):
         resp = self.api.post(self.base_url + "/rest/api/content",
@@ -83,7 +93,7 @@ class DivergenceProgram:
         return title
 
     def convert(self, f):
-        proc = subprocess.run(["pandoc", "-t", "pandoc_confluence.lua", f],
+        proc = subprocess.run(["pandoc", "-t", self.pandoc_helper_path, f],
                               stdout=subprocess.PIPE)
         assert proc.returncode == 0
         return proc.stdout.decode('UTF-8')
@@ -101,6 +111,13 @@ class DivergenceProgram:
                 print(f + ": created")
             else:
                 if prev['body'] != body:
+                    # TODO: too much changes in the diff here. Should do
+                    # something like store the file sha1 in a comment, regex
+                    # that out, and compare?
+                    from difflib import Differ
+                    sys.stdout.writelines(Differ().compare(
+                        prev['body'].splitlines(keepends=True),
+                        body.splitlines(keepends=True)))
                     self.update_page(title, body, prev['id'], prev['version'])
                     print(f + ": updated")
                 else:
@@ -108,11 +125,12 @@ class DivergenceProgram:
 
 def main():
     parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter,
         description="""
 Simple Markdown-to-Confluence uploader, using pandoc and the Confluence REST
 API.
 
-Specify credentials and site URL with environment variables:
+required environment variables:
     CONFLUENCE_USER
     CONFLUENCE_PASSWORD
     CONFLUENCE_URL
@@ -123,7 +141,7 @@ Specify credentials and site URL with environment variables:
         default=0,
         help="Show more debugging statements (can be repeated)")
     parser.add_argument("-s", "--space-key",
-        required=True,
+        default=None,
         help='Confluence Space Key (usually like "PROJ" or "~username")')
     parser.add_argument("FILE", nargs='+')
 
@@ -139,13 +157,27 @@ Specify credentials and site URL with environment variables:
         password = os.environ['CONFLUENCE_PASSWORD']
         url = os.environ['CONFLUENCE_URL']
     except KeyError:
-        parser.exit(-1, "Need to pass environment variable configs")
+        parser.exit(-1, "Need to pass environment variable configs\n")
+
+    log.info("User: " + user)
+    log.info("URL: " + url)
 
     if url.endswith('/'):
         url = url[:-1]
+
+    if args.space_key is None:
+        args.space_key = "~" + user
+        log.warn("Defaulting to home space: %s" % args.space_key)
+
+    try:
+        subprocess.check_output(['pandoc', '--version'])
+    except:
+        parser.exit(-1, "This script depends on 'pandoc', which doesn't "
+            "seem to be installed.\n")
 
     dp = DivergenceProgram(user, password, url, args.space_key)
     dp.run(args.FILE)
 
 if __name__ == '__main__':
     main()
+
