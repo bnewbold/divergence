@@ -38,11 +38,11 @@ class DivergenceProgram:
         """
         Returns None if not found, otherwise a dict with id, space, and body (in storage format)
         """
-        # TODO: could remove the body_view stuff here
+        # TODO: could remove the body_view and body_editor stuff here?
         resp = self.api.get(self.base_url + "/rest/api/content",
             params={"spaceKey": self.space,
                     "title": title,
-                    "expand": "body.storage,body.view,version,space",
+                    "expand": "body.storage,body.view,body.editor,version,space",
                     "type": "page"})
 
         log.debug(resp)
@@ -59,7 +59,21 @@ class DivergenceProgram:
                 "version": int(page['version']['number']),
                 "space": page['space']['key'],
                 "body": page['body']['storage']['value'],
-                "body_view": page['body']['view']['value']}
+                "body_view": page['body']['view']['value'],
+                "body_editor": page['body']['editor']['value']}
+
+    def get_conversion(self, body):
+        """
+        Uses the REST API to convert from storage to 'editor' format.
+        """
+        resp = self.api.post(self.base_url + "/rest/api/contentbody/convert/editor",
+            json={"representation": "storage",
+                  "value": body })
+
+        log.debug(resp)
+        log.debug(resp.content)
+        assert resp.status_code == 200
+        return resp.json()['value']
 
     def create_page(self, title, body):
         resp = self.api.post(self.base_url + "/rest/api/content",
@@ -114,10 +128,11 @@ class DivergenceProgram:
                     # TODO: too much changes in the diff here. Should do
                     # something like store the file sha1 in a comment, regex
                     # that out, and compare?
-                    from difflib import Differ
-                    sys.stdout.writelines(Differ().compare(
-                        prev['body'].splitlines(keepends=True),
-                        body.splitlines(keepends=True)))
+                    #this_body = self.get_conversion(body)
+                    #from difflib import Differ
+                    #sys.stdout.writelines(Differ().compare(
+                    #    prev['body_editor'].splitlines(keepends=True),
+                    #    this_body.splitlines(keepends=True)))
                     self.update_page(title, body, prev['id'], prev['version'])
                     print(f + ": updated")
                 else:
