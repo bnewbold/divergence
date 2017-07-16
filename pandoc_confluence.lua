@@ -1,6 +1,12 @@
 -- This is a custom writer for Pandoc to output Confluence Storage Format.
 -- It is based on the sample custom HTML writer packaged with Pandoc.
 --
+-- Copyright 2015 Avi Knoll <aknoll@atlassian.com>
+-- LICENSE: GPLv2
+--
+-- This file extracted from:
+-- https://bitbucket.org/atlassianlabs/confluence-pandoc-connect
+--
 -- Note:  you need not have lua installed on your system to use this
 -- custom writer.  However, if you do have lua installed, you can
 -- use it to test changes to the script.  'lua sample.lua' will
