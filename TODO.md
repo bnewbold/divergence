@@ -1,7 +1,5 @@
-
 TODO:
 - extract title, and/or page ID from pandoc yaml header. maybe even space?
-- have space default to user home
 - update checking doesn't actually work
 - fuzzy page title matching bug
 - optional header (flag)

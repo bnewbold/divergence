@@ -8,7 +8,9 @@ See README
 """
 
 from __future__ import print_function
+import re
 import sys, os
+import difflib
 import argparse
 import requests
 import subprocess
@@ -17,12 +19,13 @@ import logging as log
 
 class DivergenceProgram:
 
-    def __init__(self, user, password, url, space):
+    def __init__(self, user, password, url, space, force_update=False):
         self.api = requests.Session()
         self.api.auth = (user, password)
         self.api.headers.update({'Content-Type': 'application/json'})
         self.base_url = url
         self.space = space
+        self.force_update = force_update
         self.pandoc_helper_path = None
         for p in ('./pandoc_confluence.lua',
                   '/usr/local/lib/divergence/pandoc_confluence.lua',
@@ -38,11 +41,10 @@ class DivergenceProgram:
         """
         Returns None if not found, otherwise a dict with id, space, and body (in storage format)
         """
-        # TODO: could remove the body_view and body_editor stuff here?
         resp = self.api.get(self.base_url + "/rest/api/content",
             params={"spaceKey": self.space,
                     "title": title,
-                    "expand": "body.storage,body.view,body.editor,version,space",
+                    "expand": "body.storage,body.editor,version,space",
                     "type": "page"})
 
         log.debug(resp)
@@ -59,7 +61,6 @@ class DivergenceProgram:
                 "version": int(page['version']['number']),
                 "space": page['space']['key'],
                 "body": page['body']['storage']['value'],
-                "body_view": page['body']['view']['value'],
                 "body_editor": page['body']['editor']['value']}
 
     def get_conversion(self, body):
@@ -112,6 +113,12 @@ class DivergenceProgram:
         assert proc.returncode == 0
         return proc.stdout.decode('UTF-8')
 
+    def strip_tags(self, text):
+        """
+        THIS IS NOT A SANITIZER, just a naive way to strip (most?) HTML tags.
+        """
+        return re.sub('<[^<]+?>', '', text)
+
     def run(self, files):
         
         for f in files:
@@ -124,15 +131,15 @@ class DivergenceProgram:
                 self.create_page(title, body)
                 print(f + ": created")
             else:
-                if prev['body'] != body:
-                    # TODO: too much changes in the diff here. Should do
-                    # something like store the file sha1 in a comment, regex
-                    # that out, and compare?
-                    #this_body = self.get_conversion(body)
-                    #from difflib import Differ
-                    #sys.stdout.writelines(Differ().compare(
-                    #    prev['body_editor'].splitlines(keepends=True),
-                    #    this_body.splitlines(keepends=True)))
+                prev_body = self.strip_tags(prev['body_editor'])
+                this_body = self.strip_tags(self.get_conversion(body))
+                if prev_body != this_body or self.force_update:
+                    # Show a diff in verbose mode
+                    log.info('Diff of ' + f + ' changes:\n' + ''.join(difflib.unified_diff(
+                        prev_body.splitlines(keepends=True),
+                        this_body.splitlines(keepends=True),
+                        fromfile='old',
+                        tofile='new')))
                     self.update_page(title, body, prev['id'], prev['version'])
                     print(f + ": updated")
                 else:
@@ -158,21 +165,26 @@ required environment variables:
     parser.add_argument("-s", "--space-key",
         default=None,
         help='Confluence Space Key (usually like "PROJ" or "~username")')
+    parser.add_argument("-f", "--force",
+        action='store_true',
+        help='Forces an update even if we think nothing has changed')
     parser.add_argument("FILE", nargs='+')
 
     args = parser.parse_args()
 
-    if args.verbose > 0:
+    if args.verbose > 1:
         log.basicConfig(format="%(levelname)s: %(message)s", level=log.DEBUG)
+    elif args.verbose > 0:
+        log.basicConfig(format="%(levelname)s: %(message)s", level=log.INFO)
     else:
-        log.basicConfig(format="%(levelname)s: %(message)s")
+        log.basicConfig(format="%(levelname)s: %(message)s", level=log.WARN)
 
     try:
         user = os.environ['CONFLUENCE_USER']
         password = os.environ['CONFLUENCE_PASSWORD']
         url = os.environ['CONFLUENCE_URL']
     except KeyError:
-        parser.exit(-1, "Need to pass environment variable configs\n")
+        parser.exit(-1, "Need to pass environment variable configs (see --help)\n")
 
     log.info("User: " + user)
     log.info("URL: " + url)
@@ -190,7 +202,7 @@ required environment variables:
         parser.exit(-1, "This script depends on 'pandoc', which doesn't "
             "seem to be installed.\n")
 
-    dp = DivergenceProgram(user, password, url, args.space_key)
+    dp = DivergenceProgram(user, password, url, args.space_key, force_update=args.force)
     dp.run(args.FILE)
 
 if __name__ == '__main__':
