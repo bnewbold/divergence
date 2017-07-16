@@ -4,11 +4,12 @@ License: MIT
 Author: Bryan Newbold <bnewbold@archive.org>
 Date: July 2017
 
-See README
+See README.md and LICENSE.
 """
 
 from __future__ import print_function
 import re
+import json
 import sys, os
 import difflib
 import argparse
@@ -19,13 +20,20 @@ import logging as log
 
 class DivergenceProgram:
 
-    def __init__(self, user, password, url, space, force_update=False):
+    def __init__(self, user, password, url, space,
+            force_update=False,
+            include_toc=False,
+            include_header=True):
         self.api = requests.Session()
         self.api.auth = (user, password)
         self.api.headers.update({'Content-Type': 'application/json'})
         self.base_url = url
-        self.space = space
+        self.default_space = space
         self.force_update = force_update
+        self.include_toc = include_toc
+        self.include_header = include_header
+        # TODO: clean up this code duplication... use pandoc data directory
+        # instead?
         self.pandoc_helper_path = None
         for p in ('./pandoc_confluence.lua',
                   '/usr/local/lib/divergence/pandoc_confluence.lua',
@@ -36,26 +44,48 @@ class DivergenceProgram:
         if self.pandoc_helper_path is None:
             log.error("Could not find pandoc helper (pandoc_confluence.lua), bailing")
             sys.exit(-1)
+        self.pandoc_meta_path = None
+        for p in ('./meta-json.template',
+                  '/usr/local/lib/divergence/meta-json.template',
+                  '/usr/lib/divergence/meta-json.template'):
+            if os.path.exists(p):
+                self.pandoc_meta_path = p
+                break
+        if self.pandoc_meta_path is None:
+            log.error("Could not find pandoc helper (meta-json.template), bailing")
+            sys.exit(-1)
 
-    def get_page(self, title):
+    def get_page(self, title, space_key=None, page_id=None):
         """
         Returns None if not found, otherwise a dict with id, space, and body (in storage format)
         """
-        resp = self.api.get(self.base_url + "/rest/api/content",
-            params={"spaceKey": self.space,
-                    "title": title,
-                    "expand": "body.storage,body.editor,version,space",
-                    "type": "page"})
+        if space_key is None:
+            space_key = self.default_space
+        if not page_id:
+            resp = self.api.get(self.base_url + "/rest/api/content",
+                params={"spaceKey": space_key,
+                        "title": title,
+                        "expand": "body.storage,body.editor,version,space",
+                        "type": "page"})
+        else:
+            resp = self.api.get(self.base_url + "/rest/api/content/%d" % int(page_id),
+                params={"expand": "body.storage,body.editor,version,space",
+                        "type": "page"})
 
         log.debug(resp)
         log.debug(resp.content)
         assert resp.status_code == 200
         respj = resp.json()
-        if respj['size'] == 0:
-            return None
-        assert respj['size'] == 1, "Expect single result for title lookup"
-        page = respj['results'][0]
-        assert page['space']['key'].upper() == self.space.upper(), "Expect spaces to match"
+        if not page_id:
+            if respj['size'] == 0:
+                assert page_id is None, "Couldn't fetch given page id"
+                return None
+            assert respj['size'] == 1, "Expect single result for title lookup"
+            page = respj['results'][0]
+        else:
+            # We did a fetch by page_id directly
+            page = respj
+        assert page['space']['key'].upper() == space_key.upper(), "Expect spaces to match"
 
         return {"id": int(page['id']),
                 "version": int(page['version']['number']),
@@ -76,9 +106,11 @@ class DivergenceProgram:
         assert resp.status_code == 200
         return resp.json()['value']
 
-    def create_page(self, title, body):
+    def create_page(self, title, body, space_key=None):
+        if space_key is None:
+            space_key = self.default_space
         resp = self.api.post(self.base_url + "/rest/api/content",
-            json={"space": { "key": self.space },
+            json={"space": { "key": space_key },
                   "type": "page",
                   "title": title,
                   "body": {
@@ -111,7 +143,26 @@ class DivergenceProgram:
         proc = subprocess.run(["pandoc", "-t", self.pandoc_helper_path, f],
                               stdout=subprocess.PIPE)
         assert proc.returncode == 0
-        return proc.stdout.decode('UTF-8')
+        body = proc.stdout.decode('UTF-8')
+        if self.include_toc:
+            body = """<ac:structured-macro ac:name="toc">
+  <ac:parameter ac:name="minLevel">1</ac:parameter>
+  <ac:parameter ac:name="maxLevel">3</ac:parameter>
+</ac:structured-macro>""" + body
+        if self.include_header:
+            body = """<ac:structured-macro ac:name="info">
+  <ac:rich-text-body>
+    <p>This page was generated automatically from Markdown using the
+        'divergence' tool. Edits will need to be merged manually. </p>
+  </ac:rich-text-body>
+</ac:structured-macro>\n""" + body
+        return body
+
+    def metadata(self, f):
+        proc = subprocess.run(["pandoc", "--template", self.pandoc_meta_path, f],
+                              stdout=subprocess.PIPE)
+        assert proc.returncode == 0
+        return json.loads(proc.stdout.decode('UTF-8'))
 
     def strip_tags(self, text):
         """
@@ -122,13 +173,19 @@ class DivergenceProgram:
     def run(self, files):
         
         for f in files:
-            title = self.title_from_path(f)
+            meta = self.metadata(f)
+            title = meta.get('confluence-page-title',
+                             self.title_from_path(f))
+            space_key = meta.get('confluence-space-key',
+                                 self.default_space)
+            page_id = meta.get('confluence-page-id')
             log.debug(title)
             body = self.convert(f)
-            prev = self.get_page(title)
+            prev = self.get_page(title, space_key=space_key, page_id=page_id)
             log.debug(prev)
+            log.debug(self.metadata(f))
             if prev is None:
-                self.create_page(title, body)
+                self.create_page(title, body, space_key=space_key)
                 print(f + ": created")
             else:
                 prev_body = self.strip_tags(prev['body_editor'])
@@ -168,6 +225,12 @@ required environment variables:
     parser.add_argument("-f", "--force",
         action='store_true',
         help='Forces an update even if we think nothing has changed')
+    parser.add_argument("--no-header",
+        action='store_true',
+        help='Disables inserting disclaimer headers into the confluence document')
+    parser.add_argument("--toc",
+        action='store_true',
+        help='Inserts table-of-contents into the confluence document')
     parser.add_argument("FILE", nargs='+')
 
     args = parser.parse_args()
@@ -202,7 +265,10 @@ required environment variables:
         parser.exit(-1, "This script depends on 'pandoc', which doesn't "
             "seem to be installed.\n")
 
-    dp = DivergenceProgram(user, password, url, args.space_key, force_update=args.force)
+    dp = DivergenceProgram(user,password, url, args.space_key,
+        force_update=args.force,
+        include_header=not args.no_header,
+        include_toc=args.toc)
     dp.run(args.FILE)
 
 if __name__ == '__main__':
