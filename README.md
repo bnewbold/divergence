@@ -31,8 +31,8 @@ it will Just Work without needing any administrative intervention.
 
 # Usage
 
-    export CONFLUENCE_USER=`whoami`
-    export CONFLUENCE_PASSWORD="password123"
+    export CONFLUENCE_USER="user123"
+    export CONFLUENCE_PASSWORD="password456"
     export CONFLUENCE_URL="https://evil-corp.jira.com/wiki/"
     ./divergence -s "PROD25" Acme_Widget_Docs.md
 
@@ -47,8 +47,16 @@ Multiple files can be uploaded at the same time.
 If you have in-line images you'll need to upload them manually. Haven't tried
 it yet.
 
-You might want to write a shell script wrapper to help with configuration and
-pushing multiple files to multiple spaces.
+You might want to write a shell script wrapper to automate configuration; you
+could also set these variable in `~/.profile` or similar:
+
+    #!/bin/bash
+
+    export CONFLUENCE_USER=`whoami`
+    export CONFLUENCE_PASSWORD=`pass evil-corp.jira.com | head -n1`
+    export CONFLUENCE_URL="https://evil-corp.jira.com/wiki/"
+
+    divergence -v $*
 
 It's probably possible to use any pandoc-supported markup file format (not just
 Markdown), but this hasn't been tested.
