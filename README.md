@@ -48,7 +48,7 @@ If you have in-line images you'll need to upload them manually. Haven't tried
 it yet.
 
 You might want to write a shell script wrapper to automate configuration; you
-could also set these variable in `~/.profile` or similar:
+could also set these variables in `~/.profile` or similar:
 
     #!/bin/bash
 
