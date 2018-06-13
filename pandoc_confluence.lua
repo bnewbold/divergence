@@ -222,6 +222,14 @@ function Header(lev, s, attr)
   return  anchor(attr.id) .. "<h" .. lev .. attributes(attr) ..  ">" .. s .. "</h" .. lev .. ">"
 end
 
+function SingleQuoted(s)
+  return "&apos;" .. s .. "&apos;"
+end
+
+function DoubleQuoted(s)
+  return "&quot;" .. s .. "&quot;"
+end
+
 function BlockQuote(s)
   return "<blockquote><p>" .. s .. "</p></blockquote>"
 end
