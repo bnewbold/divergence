@@ -26,7 +26,8 @@ class DivergenceProgram:
     def __init__(self, user, password, url, space,
             force_update=False,
             include_toc=False,
-            header=DEFAULT_HEADER):
+            header=None,
+            no_header=False):
         self.api = requests.Session()
         self.api.auth = (user, password)
         self.api.headers.update({'Content-Type': 'application/json'})
@@ -34,7 +35,8 @@ class DivergenceProgram:
         self.default_space = space
         self.force_update = force_update
         self.include_toc = include_toc
-        self.header = header
+        self.header = header  # from command-line arg
+        self.no_header = no_header  # from command-line arg
         # TODO: clean up this code duplication... use pandoc data directory
         # instead?
         self.pandoc_helper_path = None
@@ -142,7 +144,7 @@ class DivergenceProgram:
         # TODO: only alphanum and spaces?
         return title
 
-    def convert(self, f):
+    def convert(self, f, header=None):
         proc = subprocess.run(["pandoc", "-t", self.pandoc_helper_path, f],
                               stdout=subprocess.PIPE)
         assert proc.returncode == 0
@@ -152,10 +154,10 @@ class DivergenceProgram:
   <ac:parameter ac:name="minLevel">1</ac:parameter>
   <ac:parameter ac:name="maxLevel">3</ac:parameter>
 </ac:structured-macro>""" + body
-        if self.header:
+        if header:
             body = """<ac:structured-macro ac:name="info">
   <ac:rich-text-body>
-    <p>""" + self.header + """</p>
+    <p>""" + header + """</p>
   </ac:rich-text-body>
 </ac:structured-macro>\n""" + body
         return body
@@ -182,8 +184,12 @@ class DivergenceProgram:
             space_key = meta.get('confluence-space-key',
                                  self.default_space)
             page_id = meta.get('confluence-page-id')
+            header = not self.no_header and (  # --no-header trumps all
+              self.header or  # command-line value gets priority
+              meta.get('disclaimer-header') or  # fall back to per-file
+              DEFAULT_HEADER )
             log.debug(title)
-            body = self.convert(f)
+            body = self.convert(f, header)
             prev = self.get_page(title, space_key=space_key, page_id=page_id)
             log.debug(prev)
             if prev is None:
@@ -264,6 +270,9 @@ required environment variables:
         args.space_key = "~" + user
         log.warn("Defaulting to home space: %s" % args.space_key)
 
+    if args.header and args.no_header:
+        parser.exit(-1, "Pick one of --header and --no_header.\n")
+
     try:
         subprocess.check_output(['pandoc', '--version'])
     except:
@@ -272,7 +281,7 @@ required environment variables:
 
     dp = DivergenceProgram(user,password, url, args.space_key,
         force_update=args.force,
-        header=args.header or (None if args.no_header else DEFAULT_HEADER),
+        header=args.header,
         include_toc=args.toc)
     dp.run(args.FILE)
 
