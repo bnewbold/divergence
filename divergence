@@ -268,7 +268,7 @@ required environment variables:
 
     if args.space_key is None:
         args.space_key = "~" + user
-        log.warn("Defaulting to home space: %s" % args.space_key)
+        log.warning("Defaulting to home space: %s" % args.space_key)
 
     if args.header and args.no_header:
         parser.exit(-1, "Pick one of --header and --no_header.\n")
